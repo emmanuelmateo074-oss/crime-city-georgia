@@ -124,3 +124,4 @@ if (canvas) {
   canvas.style.touchAction = 'none';
   canvas.addEventListener('contextmenu', (event) => event.preventDefault());
 }
+<script src="./src/mobile-ui.js" defer></script>
