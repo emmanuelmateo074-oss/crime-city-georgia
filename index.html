@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>CRIME CITY GEORGIA</title>
+    <meta name="description" content="Playable 3D open-world crime city prototype with Georgian police systems" />
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="gameCanvas"></canvas>
+
+      <div id="hud">
+        <div class="top-bar">
+          <div class="brand">CRIME CITY GEORGIA</div>
+          <div class="status">City: Tbilisi District</div>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat-box">
+            <span class="label">Cash</span>
+            <span id="cashValue">$0</span>
+          </div>
+          <div class="stat-box">
+            <span class="label">Rank</span>
+            <span id="rankValue">Civilian</span>
+          </div>
+          <div class="stat-box">
+            <span class="label">Wanted</span>
+            <span id="wantedValue">0</span>
+          </div>
+        </div>
+
+        <div id="messageLog" class="message-log">
+          Welcome to Tbilisi. Patrol the city and protect the streets.
+        </div>
+      </div>
+
+      <div id="controls" aria-label="mobile controls">
+        <div class="dpad">
+          <button class="control-btn" data-key="KeyW">↑</button>
+          <div class="dpad-middle">
+            <button class="control-btn" data-key="KeyA">←</button>
+            <button class="control-btn" data-key="KeyS">↓</button>
+            <button class="control-btn" data-key="KeyD">→</button>
+          </div>
+        </div>
+
+        <div class="action-buttons">
+          <button class="action-btn" data-action="run">Run</button>
+          <button class="action-btn" data-action="jump">Jump</button>
+          <button class="action-btn" data-action="interact">E / Enter</button>
+          <button class="action-btn" data-action="vehicle">Car</button>
+          <button class="action-btn" data-action="police">Police</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
