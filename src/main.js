@@ -32,6 +32,7 @@ const state = {
   vehicle: null,
   insideStation: false,
   patrol: false,
+  mission: 'District patrol',
   jobMessage: 'Welcome to Tbilisi. Patrol the city and protect the streets.'
 };
 
@@ -61,6 +62,45 @@ function refreshHud() {
   hud.cash.textContent = `$${state.money}`;
   hud.rank.textContent = state.rank;
   hud.wanted.textContent = String(state.wanted);
+}
+
+function makeLabelTexture(label, bg = '#1d2c46', textColor = '#f5f7fa') {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.strokeStyle = '#d9dfe8';
+  ctx.lineWidth = 8;
+  ctx.strokeRect(12, 12, canvas.width - 24, canvas.height - 24);
+
+  ctx.fillStyle = textColor;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 72px Arial';
+  ctx.fillText(label, canvas.width / 2, canvas.height / 2 - 6);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function createBillboard(text, x, y, z, width = 3.2, height = 1.2, bg = '#1c3558') {
+  const mat = new THREE.MeshStandardMaterial({
+    map: makeLabelTexture(text, bg, '#f4f7fb'),
+    transparent: true,
+    roughness: 0.8,
+    metalness: 0.1
+  });
+
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), mat);
+  mesh.position.set(x, y, z);
+  mesh.rotation.y = Math.PI;
+  world.add(mesh);
+  return mesh;
 }
 
 function createCharacter({ uniformColor = 0xefeae1, skin = 0xe5b88a, isPolice = false } = {}) {
@@ -177,6 +217,8 @@ function createGround() {
   const sidewalk4 = sidewalk3.clone();
   sidewalk4.position.x = -7;
   world.add(sidewalk4);
+
+  createBillboard('თბილისი', 0, 2.7, 9.5, 3.2, 1.2, '#274b7a');
 }
 
 function createPalm(x, z) {
@@ -277,6 +319,9 @@ function createPoliceStation() {
   emblem.position.set(0, 3.6, 18 + 6.5 + 0.12);
   scene.add(emblem);
 
+  const signBoard = createBillboard('საქართველოს პოლიცია', 0, 4.5, 18 + 6.5 + 0.2, 4.8, 1.2, '#123a63');
+  signBoard.rotation.y = Math.PI;
+
   const interior = new THREE.Group();
   const wallMat = new THREE.MeshStandardMaterial({ color: 0xd9d2c6, roughness: 0.95 });
 
@@ -373,6 +418,14 @@ function createPoliceVehicle(x, z) {
   );
   bar.position.set(-0.5, 1.85, 0);
   car.add(bar);
+
+  const sirenBlue = new THREE.PointLight(0x4ec8ff, 1.2, 10, 2);
+  sirenBlue.position.set(-0.5, 2.0, 0.15);
+  car.add(sirenBlue);
+
+  const sirenRed = new THREE.PointLight(0xff4d5b, 1.2, 10, 2);
+  sirenRed.position.set(-0.5, 2.0, -0.15);
+  car.add(sirenRed);
 
   const wheelGeom = new THREE.CylinderGeometry(0.35, 0.35, 0.32, 18);
   const wheels = [
