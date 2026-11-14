@@ -7,6 +7,34 @@
     <title>CRIME CITY GEORGIA — თბილისი</title>
     <meta name="description" content="თბილისის 3D ღია სამყაროს საპატრულო თამაში" />
     <link rel="stylesheet" href="./src/styles.css" />
+    <!-- GitHub Pages serves source HTML directly, so resolve the Three.js bare import in main.js. -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js"
+        }
+      }
+    </script>
+    <style>
+      #startupError {
+        display: none;
+        position: fixed;
+        z-index: 20;
+        left: 12px;
+        right: 12px;
+        top: 12px;
+        max-height: 45vh;
+        overflow: auto;
+        padding: 14px;
+        color: #fff;
+        background: rgba(120, 24, 30, .96);
+        border: 1px solid rgba(255,255,255,.35);
+        border-radius: 12px;
+        font: 14px/1.5 Arial, sans-serif;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+    </style>
   </head>
   <body>
     <main id="app">
@@ -21,14 +49,21 @@
           <div class="stat-box"><span class="label">სტატუსი</span><strong id="rankValue">მოქალაქე</strong></div>
           <div class="stat-box wanted-box"><span class="label">ძებნის დონე</span><strong id="wantedValue">0</strong></div>
         </div>
-        <div class="mission-card"><span class="mission-kicker">მიმდინარე დავალება</span><strong id="missionValue">მიუახლოვდი პოლიციელს სამსახურის დასაწყებად</strong></div>
+        <div class="mission-card"><span class="mission-kicker">მიმდინარე დავალება</span><strong id="missionValue">მიუახლოვდი პოლიციელს და დააჭირე E-ს</strong></div>
         <div id="messageLog" class="message-log">თბილისი · მიუახლოვდი პოლიციელს და დააჭირე E-ს სამსახურის დასაწყებად.</div>
-        <div class="map-card" aria-label="თბილისის უბნის რუკა"><div class="map-grid"></div><span class="map-road road-a"></span><span class="map-road road-b"></span><span class="map-player">▲</span><span class="map-label">თბილისი</span></div>
+        <div class="map-card" aria-label="თბილისის უბნის მიახლოებითი რუკა">
+          <div class="map-grid"></div><span class="map-road road-a"></span><span class="map-road road-b"></span>
+          <span class="map-player">▲</span><span class="map-label">თბილისი</span>
+        </div>
       </section>
       <section id="controls" aria-label="თამაშის მართვა">
         <div class="dpad" aria-label="მოძრაობა">
           <button class="control-btn" data-key="KeyW" aria-label="წინ">▲</button>
-          <div class="dpad-middle"><button class="control-btn" data-key="KeyA" aria-label="მარცხნივ">◀</button><button class="control-btn" data-key="KeyS" aria-label="უკან">▼</button><button class="control-btn" data-key="KeyD" aria-label="მარჯვნივ">▶</button></div>
+          <div class="dpad-middle">
+            <button class="control-btn" data-key="KeyA" aria-label="მარცხნივ">◀</button>
+            <button class="control-btn" data-key="KeyS" aria-label="უკან">▼</button>
+            <button class="control-btn" data-key="KeyD" aria-label="მარჯვნივ">▶</button>
+          </div>
         </div>
         <div class="action-buttons">
           <button class="action-btn" data-action="run">სირბილი</button>
@@ -37,10 +72,29 @@
           <button class="action-btn" data-action="vehicle">მანქანა</button>
           <button class="action-btn police-btn" data-action="police">პატრული</button>
         </div>
-        <div class="desktop-help">WASD / ისრები — მოძრაობა · Shift — სირბილი · Space — ხტომა · E — მოქმედება · P — პატრული · მაუსით/თითით — კამერა</div>
+        <div class="desktop-help">WASD / ისრები — მოძრაობა · Shift — სირბილი · Space — ხტომა · E — მოქმედება</div>
       </section>
+      <div id="startupError" role="alert"></div>
     </main>
+
+    <script>
+      (() => {
+        const showError = (text) => {
+          const box = document.getElementById('startupError');
+          if (!box) return;
+          box.style.display = 'block';
+          box.textContent = 'თამაშის ჩატვირთვის შეცდომა. გადატვირთე გვერდი; თუ შეცდომა განმეორდა, გამომიგზავნე ეს ტექსტი:\n' + text;
+        };
+        window.addEventListener('error', (event) => {
+          if (event.message) showError(event.message + (event.filename ? '\n' + event.filename + ':' + event.lineno : ''));
+        });
+        window.addEventListener('unhandledrejection', (event) => {
+          showError(String(event.reason?.stack || event.reason || 'უცნობი შეცდომა'));
+        });
+      })();
+    </script>
     <script type="module" src="./src/main.js"></script>
     <script src="./src/georgian.js" defer></script>
+    <script src="./src/mobile-ui.js" defer></script>
   </body>
 </html>
