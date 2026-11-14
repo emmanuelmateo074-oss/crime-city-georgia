@@ -1,767 +1,97 @@
 import * as THREE from 'three';
 
-const canvas = document.getElementById('gameCanvas');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// CRIME CITY GEORGIA — original, self-contained playable Three.js prototype.
+const canvas = document.querySelector('#gameCanvas');
+if (!canvas) throw new Error('Missing #gameCanvas in index.html');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));
+renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x9cc7db);
-scene.fog = new THREE.Fog(0x9cc7db, 18, 120);
-
-const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 300);
-camera.position.set(0, 5, 12);
-
+scene.background = new THREE.Color(0xe89542);
+scene.fog = new THREE.Fog(0xe89542, 75, 230);
+const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 400);
 const clock = new THREE.Clock();
-
-const hud = {
-  cash: document.getElementById('cashValue'),
-  rank: document.getElementById('rankValue'),
-  wanted: document.getElementById('wantedValue'),
-  log: document.getElementById('messageLog')
-};
-
-const state = {
-  money: 1200,
-  rank: 'Civilian',
-  wanted: 0,
-  police: false,
-  inVehicle: false,
-  vehicle: null,
-  insideStation: false,
-  patrol: false,
-  mission: 'District patrol',
-  jobMessage: 'Welcome to Tbilisi. Patrol the city and protect the streets.',
-  sirenPulse: 0
-};
-
-const input = {};
-const touchActions = new Set();
-const world = new THREE.Group();
-scene.add(world);
-
-const player = {
-  root: new THREE.Group(),
-  velocity: new THREE.Vector3(),
-  speed: 5,
-  runSpeed: 8,
-  jumpForce: 7,
-  onGround: true,
-  yaw: 0
-};
-
-function setLog(message) {
-  state.jobMessage = message;
-  hud.log.textContent = message;
-}
-
-function refreshHud() {
-  hud.cash.textContent = `$${state.money}`;
-  hud.rank.textContent = state.rank;
-  hud.wanted.textContent = String(state.wanted);
-}
-
-function makeLabelTexture(label, bg = '#1d2c46', textColor = '#f5f7fa') {
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 256;
-  const ctx = canvas.getContext('2d');
-
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  ctx.strokeStyle = '#d9dfe8';
-  ctx.lineWidth = 8;
-  ctx.strokeRect(12, 12, canvas.width - 24, canvas.height - 24);
-
-  ctx.fillStyle = textColor;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = 'bold 72px Arial';
-  ctx.fillText(label, canvas.width / 2, canvas.height / 2 - 6);
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.needsUpdate = true;
-  return texture;
-}
-
-function createBillboard(text, x, y, z, width = 3.2, height = 1.2, bg = '#1c3558') {
-  const mat = new THREE.MeshStandardMaterial({
-    map: makeLabelTexture(text, bg, '#f4f7fb'),
-    transparent: true,
-    roughness: 0.8,
-    metalness: 0.1
-  });
-
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), mat);
-  mesh.position.set(x, y, z);
-  mesh.rotation.y = Math.PI;
-  world.add(mesh);
-  return mesh;
-}
-
-function createCharacter({ uniformColor = 0xefeae1, skin = 0xe5b88a, isPolice = false } = {}) {
-  const group = new THREE.Group();
-
-  const torso = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.42, 1.5, 6, 12),
-    new THREE.MeshStandardMaterial({ color: uniformColor, roughness: 0.9 })
-  );
-  torso.position.y = 1.5;
-  torso.castShadow = true;
-  group.add(torso);
-
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.38, 24, 24),
-    new THREE.MeshStandardMaterial({ color: skin, roughness: 0.9 })
-  );
-  head.position.y = 2.7;
-  head.castShadow = true;
-  group.add(head);
-
-  const hair = new THREE.Mesh(
-    new THREE.SphereGeometry(0.42, 16, 16, 0, Math.PI * 2, 0, Math.PI / 1.7),
-    new THREE.MeshStandardMaterial({ color: 0x1a120d, roughness: 0.8 })
-  );
-  hair.position.set(0, 2.95, 0.02);
-  hair.castShadow = true;
-  group.add(hair);
-
-  const armGeom = new THREE.CapsuleGeometry(0.14, 1.1, 4, 10);
-  const armLeft = new THREE.Mesh(armGeom, new THREE.MeshStandardMaterial({ color: skin, roughness: 0.9 }));
-  armLeft.position.set(-0.55, 1.6, 0);
-  armLeft.rotation.z = 0.28;
-  armLeft.castShadow = true;
-  group.add(armLeft);
-
-  const armRight = armLeft.clone();
-  armRight.position.x = 0.55;
-  armRight.rotation.z = -0.28;
-  group.add(armRight);
-
-  const legGeom = new THREE.CapsuleGeometry(0.17, 1.2, 4, 10);
-  const legLeft = new THREE.Mesh(legGeom, new THREE.MeshStandardMaterial({ color: 0x191919, roughness: 0.85 }));
-  legLeft.position.set(-0.18, 0.55, 0);
-  legLeft.castShadow = true;
-  group.add(legLeft);
-
-  const legRight = legLeft.clone();
-  legRight.position.x = 0.18;
-  group.add(legRight);
-
-  if (isPolice) {
-    const badge = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.12, 0.12, 0.04, 20),
-      new THREE.MeshStandardMaterial({ color: 0xe9d86e, metalness: 0.7, roughness: 0.35, emissive: 0x342d00 })
-    );
-    badge.position.set(0, 1.8, 0.43);
-    group.add(badge);
-
-    const cap = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.38, 0.48, 0.25, 20),
-      new THREE.MeshStandardMaterial({ color: 0x14253d, roughness: 0.5 })
-    );
-    cap.position.set(0, 3.2, 0);
-    group.add(cap);
-  }
-
-  return group;
-}
-
-function createGround() {
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(200, 200),
-    new THREE.MeshStandardMaterial({ color: 0x7f9d63, roughness: 1 })
-  );
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-
-  const roadH = new THREE.Mesh(
-    new THREE.BoxGeometry(42, 0.14, 12),
-    new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.95 })
-  );
-  roadH.position.set(0, 0.07, 0);
-  roadH.receiveShadow = true;
-  world.add(roadH);
-
-  const roadV = new THREE.Mesh(
-    new THREE.BoxGeometry(12, 0.14, 42),
-    new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.95 })
-  );
-  roadV.position.set(0, 0.07, 0);
-  roadV.receiveShadow = true;
-  world.add(roadV);
-
-  const sidewalk = new THREE.Mesh(
-    new THREE.BoxGeometry(46, 0.1, 2),
-    new THREE.MeshStandardMaterial({ color: 0xb2a388, roughness: 1 })
-  );
-  sidewalk.position.set(0, 0.08, 7);
-  world.add(sidewalk);
-
-  const sidewalk2 = sidewalk.clone();
-  sidewalk2.position.z = -7;
-  world.add(sidewalk2);
-
-  const sidewalk3 = new THREE.Mesh(
-    new THREE.BoxGeometry(2, 0.1, 46),
-    new THREE.MeshStandardMaterial({ color: 0xb2a388, roughness: 1 })
-  );
-  sidewalk3.position.set(7, 0.08, 0);
-  world.add(sidewalk3);
-
-  const sidewalk4 = sidewalk3.clone();
-  sidewalk4.position.x = -7;
-  world.add(sidewalk4);
-
-  createBillboard('თბილისი', 0, 2.7, 9.5, 3.2, 1.2, '#274b7a');
-}
-
-function createPalm(x, z) {
-  const palm = new THREE.Group();
-
-  const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.2, 0.32, 3.8, 12),
-    new THREE.MeshStandardMaterial({ color: 0x9e6a33, roughness: 0.9 })
-  );
-  trunk.position.y = 1.8;
-  trunk.castShadow = true;
-  palm.add(trunk);
-
-  for (let i = 0; i < 7; i += 1) {
-    const leaf = new THREE.Mesh(
-      new THREE.BoxGeometry(0.18, 0.75, 2.2),
-      new THREE.MeshStandardMaterial({ color: 0x2fa95e, roughness: 0.8 })
-    );
-    leaf.rotation.z = Math.PI / 2;
-    leaf.rotation.y = (i / 7) * Math.PI * 2;
-    leaf.position.set(0, 3.7, 0);
-    leaf.castShadow = true;
-    palm.add(leaf);
-  }
-
-  palm.position.set(x, 0, z);
-  world.add(palm);
-}
-
-function createStreetLight(x, z) {
-  const pole = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.12, 0.15, 4.8, 12),
-    new THREE.MeshStandardMaterial({ color: 0x3d434b, metalness: 0.8, roughness: 0.4 })
-  );
-  pole.position.set(x, 2.4, z);
-  pole.castShadow = true;
-  world.add(pole);
-
-  const arm = new THREE.Mesh(
-    new THREE.BoxGeometry(1.25, 0.12, 0.12),
-    new THREE.MeshStandardMaterial({ color: 0x434d53, metalness: 0.8, roughness: 0.45 })
-  );
-  arm.position.set(x + 0.5, 4.6, z);
-  arm.castShadow = true;
-  world.add(arm);
-
-  const lamp = new THREE.PointLight(0xffefb0, 1.6, 18, 2);
-  lamp.position.set(x + 1.1, 4.5, z);
-  world.add(lamp);
-}
-
-function createBuilding({ x, z, width, depth, height, color = 0xd8ceb2 }) {
-  const building = new THREE.Group();
-
-  const shell = new THREE.Mesh(
-    new THREE.BoxGeometry(width, height, depth),
-    new THREE.MeshStandardMaterial({ color, roughness: 0.95, metalness: 0.08 })
-  );
-  shell.position.y = height / 2;
-  shell.castShadow = true;
-  shell.receiveShadow = true;
-  building.add(shell);
-
-  const doorFrame = new THREE.Mesh(
-    new THREE.BoxGeometry(1.4, 2.4, 0.18),
-    new THREE.MeshStandardMaterial({ color: 0x4c392d, roughness: 0.8 })
-  );
-  doorFrame.position.set(0, 1.2, depth / 2 + 0.12);
-  building.add(doorFrame);
-
-  const door = new THREE.Mesh(
-    new THREE.BoxGeometry(1.2, 2.2, 0.1),
-    new THREE.MeshStandardMaterial({ color: 0x2c2017, roughness: 0.6 })
-  );
-  door.position.set(0, 1.1, depth / 2 + 0.15);
-  door.castShadow = true;
-  building.add(door);
-
-  const sign = new THREE.Mesh(
-    new THREE.BoxGeometry(2.3, 0.5, 0.12),
-    new THREE.MeshStandardMaterial({ color: 0xd63d3d, emissive: 0x6d1818, roughness: 0.4 })
-  );
-  sign.position.set(0, 3.4, depth / 2 + 0.16);
-  building.add(sign);
-
-  building.position.set(x, 0, z);
-  world.add(building);
-  return building;
-}
-
-function createPoliceStation() {
-  const station = createBuilding({ x: 0, z: 18, width: 11, depth: 13, height: 6, color: 0xc0bcc3 });
-
-  const emblem = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.7, 0.7, 0.08, 32),
-    new THREE.MeshStandardMaterial({ color: 0xe1e9f1, metalness: 0.75, roughness: 0.25, emissive: 0x123352 })
-  );
-  emblem.position.set(0, 3.6, 18 + 6.5 + 0.12);
-  scene.add(emblem);
-
-  const signBoard = createBillboard('საქართველოს პოლიცია', 0, 4.5, 18 + 6.5 + 0.2, 4.8, 1.2, '#123a63');
-  signBoard.rotation.y = Math.PI;
-
-  const interior = new THREE.Group();
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0xd9d2c6, roughness: 0.95 });
-
-  const floor = new THREE.Mesh(
-    new THREE.BoxGeometry(9.2, 0.2, 10.3),
-    new THREE.MeshStandardMaterial({ color: 0x9e9389, roughness: 0.9 })
-  );
-  floor.position.set(0, 0.1, 18);
-  interior.add(floor);
-
-  const north = new THREE.Mesh(new THREE.BoxGeometry(9.2, 3.2, 0.2), wallMat);
-  north.position.set(0, 1.6, 13.2);
-  interior.add(north);
-
-  const south = new THREE.Mesh(new THREE.BoxGeometry(9.2, 3.2, 0.2), wallMat);
-  south.position.set(0, 1.6, 22.8);
-  interior.add(south);
-
-  const west = new THREE.Mesh(new THREE.BoxGeometry(0.2, 3.2, 9.6), wallMat);
-  west.position.set(-4.6, 1.6, 18);
-  interior.add(west);
-
-  const east = new THREE.Mesh(new THREE.BoxGeometry(0.2, 3.2, 9.6), wallMat);
-  east.position.set(4.6, 1.6, 18);
-  interior.add(east);
-
-  const reception = new THREE.Mesh(
-    new THREE.BoxGeometry(2.5, 1, 0.9),
-    new THREE.MeshStandardMaterial({ color: 0xc59d6a, roughness: 0.8 })
-  );
-  reception.position.set(-2.4, 0.5, 17.3);
-  interior.add(reception);
-
-  const deskChair = new THREE.Mesh(
-    new THREE.BoxGeometry(0.7, 0.7, 0.7),
-    new THREE.MeshStandardMaterial({ color: 0x5c4d49, roughness: 0.8 })
-  );
-  deskChair.position.set(-2.4, 0.35, 18.6);
-  interior.add(deskChair);
-
-  const evidenceDesk = new THREE.Mesh(
-    new THREE.BoxGeometry(1.6, 0.8, 1.2),
-    new THREE.MeshStandardMaterial({ color: 0x7d7d7d, roughness: 0.7 })
-  );
-  evidenceDesk.position.set(2.3, 0.4, 16.8);
-  interior.add(evidenceDesk);
-
-  const locker = new THREE.Mesh(
-    new THREE.BoxGeometry(1.2, 2.2, 0.7),
-    new THREE.MeshStandardMaterial({ color: 0x9d9d9d, roughness: 0.7 })
-  );
-  locker.position.set(-2.9, 1.1, 20.6);
-  interior.add(locker);
-
-  const bunk = new THREE.Mesh(
-    new THREE.BoxGeometry(1.8, 0.6, 2.5),
-    new THREE.MeshStandardMaterial({ color: 0x7d8fc3, roughness: 0.8 })
-  );
-  bunk.position.set(2.8, 0.3, 20.6);
-  interior.add(bunk);
-
-  interior.visible = false;
-  scene.add(interior);
-
-  station.userData.interior = interior;
-  station.userData.enterPosition = new THREE.Vector3(0, 0.1, 14.8);
-  station.userData.exitPosition = new THREE.Vector3(0, 0.1, 24.5);
-
-  return station;
-}
-
-function createPoliceVehicle(x, z) {
-  const car = new THREE.Group();
-
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(3.2, 0.8, 1.8),
-    new THREE.MeshStandardMaterial({ color: 0xcfe4f4, metalness: 0.35, roughness: 0.35 })
-  );
-  body.position.y = 0.9;
-  body.castShadow = true;
-  car.add(body);
-
-  const cabin = new THREE.Mesh(
-    new THREE.BoxGeometry(1.6, 0.7, 1.4),
-    new THREE.MeshStandardMaterial({ color: 0xf1f6ff, metalness: 0.55, roughness: 0.3 })
-  );
-  cabin.position.set(0.2, 1.45, 0);
-  cabin.castShadow = true;
-  car.add(cabin);
-
-  const bar = new THREE.Mesh(
-    new THREE.BoxGeometry(1.1, 0.18, 0.3),
-    new THREE.MeshStandardMaterial({ color: 0x1f1f1f, emissive: 0x111111 })
-  );
-  bar.position.set(-0.5, 1.85, 0);
-  car.add(bar);
-
-  const sirenBlue = new THREE.PointLight(0x4ec8ff, 1.2, 10, 2);
-  sirenBlue.position.set(-0.5, 2.0, 0.15);
-  car.add(sirenBlue);
-
-  const sirenRed = new THREE.PointLight(0xff4d5b, 1.2, 10, 2);
-  sirenRed.position.set(-0.5, 2.0, -0.15);
-  car.add(sirenRed);
-
-  const wheelGeom = new THREE.CylinderGeometry(0.35, 0.35, 0.32, 18);
-  const wheels = [
-    [-1.1, 0.34, -0.92],
-    [1.1, 0.34, -0.92],
-    [-1.1, 0.34, 0.92],
-    [1.1, 0.34, 0.92]
-  ];
-
-  for (const [xv, yv, zv] of wheels) {
-    const wheel = new THREE.Mesh(
-      wheelGeom,
-      new THREE.MeshStandardMaterial({ color: 0x191919, roughness: 0.8 })
-    );
-    wheel.rotation.z = Math.PI / 2;
-    wheel.position.set(xv, yv, zv);
-    car.add(wheel);
-  }
-
-  car.position.set(x, 0.3, z);
-  car.userData.sirenBlue = sirenBlue;
-  car.userData.sirenRed = sirenRed;
-  world.add(car);
-  return car;
-}
-
-const policeStation = createPoliceStation();
-const policeCar = createPoliceVehicle(-10, -7);
-const suspicious = createCharacter({ uniformColor: 0x7a5543, skin: 0xe0b18a, isPolice: false });
-suspicious.position.set(9, 0, 8);
-scene.add(suspicious);
-
-const civilian = createCharacter({ uniformColor: 0x62816e, skin: 0xf0c2a5, isPolice: false });
-civilian.position.set(-10, 0, 3);
-scene.add(civilian);
-
-const officer = createCharacter({ uniformColor: 0x203d6d, skin: 0xe3b48a, isPolice: true });
-officer.position.set(0, 0, -8);
-scene.add(officer);
-
-player.root = createCharacter({ uniformColor: 0xf3eee8, skin: 0xe5b88a, isPolice: false });
-player.root.position.set(0, 0, 10);
-scene.add(player.root);
-
-function addWorldProps() {
-  for (const x of [-18, 18]) {
-    createPalm(x, 18);
-    createPalm(x, -18);
-  }
-  for (const z of [-12, 12]) {
-    createPalm(18, z);
-    createPalm(-18, z);
-  }
-
-  createBuilding({ x: 18, z: 0, width: 9, height: 7, depth: 10, color: 0xefdfc2 });
-  createBuilding({ x: -18, z: 0, width: 9, height: 7, depth: 10, color: 0xd5ddeb });
-  createBuilding({ x: 0, z: -18, width: 14, height: 8, depth: 12, color: 0xb2a08d });
-
-  for (const light of [[-15, 11], [15, 11], [-15, -11], [15, -11], [-3, 14], [3, 14]]) {
-    createStreetLight(light[0], light[1]);
-  }
-}
-
-const cityNpc = {
-  suspect: {
-    mesh: suspicious,
-    home: new THREE.Vector3(9, 0, 8),
-    target: new THREE.Vector3(9, 0, 8),
-    speed: 1.4
-  },
-  civilian: {
-    mesh: civilian,
-    home: new THREE.Vector3(-10, 0, 3),
-    target: new THREE.Vector3(-10, 0, 3),
-    speed: 1.1
-  }
-};
-
-function randomNpcTarget(home, range = 8) {
-  const angle = Math.random() * Math.PI * 2;
-  const radius = Math.random() * range;
-  return new THREE.Vector3(
-    THREE.MathUtils.clamp(home.x + Math.cos(angle) * radius, -26, 26),
-    0,
-    THREE.MathUtils.clamp(home.z + Math.sin(angle) * radius, -26, 26)
-  );
-}
-
-function updateNpcs() {
-  for (const npc of Object.values(cityNpc)) {
-    const mesh = npc.mesh;
-    const toTarget = npc.target.clone().sub(mesh.position);
-    const dist = toTarget.length();
-
-    if (dist > 0.2) {
-      toTarget.normalize();
-      mesh.position.addScaledVector(toTarget, npc.speed * 0.016);
-      mesh.rotation.y = Math.atan2(toTarget.x, toTarget.z);
-    } else {
-      npc.target = randomNpcTarget(npc.home, 8);
-    }
-  }
-}
-
-addWorldProps();
-createGround();
-refreshHud();
-setLog('Welcome to Tbilisi. Citizens can enter the police station and the patrol unit is ready.');
-
-function setPoliceUniform() {
-  const body = player.root.children[0];
-  if (body && body.material) {
-    body.material.color.setHex(0x203d6d);
-  }
-  state.police = true;
-  state.rank = 'Police Officer';
-  state.money += 1400;
-  setLog('Police identity accepted. Patrol route active.');
-  refreshHud();
-}
-
-function enterStation() {
-  if (state.insideStation) {
-    state.insideStation = false;
-    player.root.position.copy(policeStation.userData.exitPosition);
-    policeStation.userData.interior.visible = false;
-    setLog('Police station door closed. You are back on the street.');
-    return;
-  }
-
-  state.insideStation = true;
-  player.root.position.copy(policeStation.userData.enterPosition);
-  policeStation.userData.interior.visible = true;
-  setLog('You entered the police station. Operations room and locker access are active.');
-}
-
-function interact() {
-  const playerPos = player.root.position;
-  const stationDoor = Math.abs(playerPos.z - 25.5) < 2.8 && Math.abs(playerPos.x) < 2.5;
-  const carReach = playerPos.distanceTo(policeCar.position) < 3.1;
-  const suspectReach = playerPos.distanceTo(suspicious.position) < 2.5;
-
-  if (stationDoor) {
-    enterStation();
-    return;
-  }
-
-  if (carReach && !state.inVehicle) {
-    state.inVehicle = true;
-    state.vehicle = policeCar;
-    player.root.visible = false;
-    setLog('Police vehicle entered. Drive the patrol route.');
-    return;
-  }
-
-  if (state.inVehicle && carReach) {
-    state.inVehicle = false;
-    state.vehicle = null;
-    player.root.visible = true;
-    player.root.position.set(policeCar.position.x + 2, 0.1, policeCar.position.z + 1.2);
-    setLog('Vehicle exited. Back to foot patrol.');
-    return;
-  }
-
-  if (state.police && suspectReach) {
-    state.wanted = Math.min(5, state.wanted + 1);
-    state.money += 150;
-    setLog('Suspect stopped. Documents checked. Warning issued.');
-    refreshHud();
-    return;
-  }
-
-  if (!state.police && suspectReach) {
-    setLog('This citizen is acting suspiciously. Contact a police unit for assistance.');
-    return;
-  }
-
-  if (Math.abs(playerPos.x - officer.position.x) < 2 && Math.abs(playerPos.z - officer.position.z) < 2) {
-    if (!state.police) {
-      setPoliceUniform();
-    } else {
-      state.patrol = !state.patrol;
-      setLog(state.patrol ? 'Patrol mode active. Secure the district.' : 'Patrol paused. Awaiting new assignment.');
-    }
-  }
-}
-
-function updateMovement(delta) {
-  const moveX = (input.KeyD || input.ArrowRight ? 1 : 0) - (input.KeyA || input.ArrowLeft ? 1 : 0);
-  const moveZ = (input.KeyW || input.ArrowUp ? 1 : 0) - (input.KeyS || input.ArrowDown ? 1 : 0);
-  const run = input.Shift || touchActions.has('run');
-
-  const move = new THREE.Vector3(moveX, 0, moveZ);
-  if (move.lengthSq() > 0) {
-    move.normalize();
-    const speed = run ? player.runSpeed : player.speed;
-    player.velocity.x = move.x * speed;
-    player.velocity.z = move.z * speed;
-    player.yaw = Math.atan2(move.x, move.z);
-    player.root.rotation.y = player.yaw;
-  } else {
-    player.velocity.x *= 0.8;
-    player.velocity.z *= 0.8;
-  }
-
-  const nextX = player.root.position.x + player.velocity.x * delta;
-  const nextZ = player.root.position.z + player.velocity.z * delta;
-  player.root.position.x = THREE.MathUtils.clamp(nextX, -32, 32);
-  player.root.position.z = THREE.MathUtils.clamp(nextZ, -32, 32);
-
-  if (input.Space || touchActions.has('jump')) {
-    if (player.onGround) {
-      player.velocity.y = player.jumpForce;
-      player.onGround = false;
-    }
-  }
-
-  player.velocity.y -= 18 * delta;
-  player.root.position.y += player.velocity.y * delta;
-  if (player.root.position.y <= 0) {
-    player.root.position.y = 0;
-    player.velocity.y = 0;
-    player.onGround = true;
-  }
-
-  if (state.inVehicle && state.vehicle) {
-    const vehicle = state.vehicle;
-    const turn = (input.KeyD || input.ArrowRight ? 1 : 0) - (input.KeyA || input.ArrowLeft ? 1 : 0);
-    const drive = (input.KeyW || input.ArrowUp ? 1 : 0) - (input.KeyS || input.ArrowDown ? 1 : 0);
-
-    vehicle.rotation.y += turn * 1.3 * delta;
-    vehicle.position.x += Math.sin(vehicle.rotation.y) * drive * 10 * delta;
-    vehicle.position.z += Math.cos(vehicle.rotation.y) * drive * 10 * delta;
-    vehicle.position.x = THREE.MathUtils.clamp(vehicle.position.x, -30, 30);
-    vehicle.position.z = THREE.MathUtils.clamp(vehicle.position.z, -30, 30);
-    player.root.position.copy(vehicle.position).add(new THREE.Vector3(0, 0.8, 1.5));
-  }
-
-  if (state.police && state.patrol) {
-    const dist = player.root.position.distanceTo(officer.position);
-    if (dist < 10) {
-      setLog('Patrol active. Check suspicious traffic and citizen reports.');
-    }
-  }
-}
-
-function animate() {
-  const delta = Math.min(clock.getDelta(), 0.033);
-  state.sirenPulse += delta * 10;
-
-  updateMovement(delta);
-  updateNpcs();
-
-  if (state.vehicle && state.vehicle.userData.sirenBlue && state.vehicle.userData.sirenRed) {
-    const pulse = Math.sin(state.sirenPulse) * 0.5 + 0.5;
-    state.vehicle.userData.sirenBlue.intensity = 1.2 + pulse * 1.4;
-    state.vehicle.userData.sirenRed.intensity = 1.2 + (1 - pulse) * 1.4;
-  }
-
-  if (!state.inVehicle) {
-    const followPos = new THREE.Vector3(player.root.position.x, 3.2, player.root.position.z + 8.5);
-    camera.position.lerp(followPos, 0.08);
-    camera.lookAt(player.root.position.x, 1.6, player.root.position.z);
-  } else {
-    const carPos = state.vehicle.position;
-    camera.position.lerp(new THREE.Vector3(carPos.x, 5.8, carPos.z + 8.5), 0.08);
-    camera.lookAt(carPos.x, 1.3, carPos.z);
-  }
-
-  renderer.render(scene, camera);
-  requestAnimationFrame(animate);
-}
-
-window.addEventListener('keydown', (event) => {
-  input[event.code] = true;
-
-  if (event.code === 'KeyE') interact();
-  if (event.code === 'KeyP' && state.police) {
-    state.patrol = !state.patrol;
-    setLog(state.patrol ? 'Patrol started. Citizen calls are being routed.' : 'Patrol paused. Awaiting new assignment.');
-  }
-  if (event.code === 'KeyJ' && !state.police) setPoliceUniform();
-});
-
-window.addEventListener('keyup', (event) => {
-  input[event.code] = false;
-});
-
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-});
-
-const movementButtons = document.querySelectorAll('.control-btn');
-movementButtons.forEach((button) => {
-  const code = button.dataset.key;
-  const setPressed = (pressed) => {
-    input[code] = pressed;
-  };
-
-  button.addEventListener('pointerdown', () => setPressed(true));
-  button.addEventListener('pointerup', () => setPressed(false));
-  button.addEventListener('pointerleave', () => setPressed(false));
-  button.addEventListener('pointercancel', () => setPressed(false));
-});
-
-const actionButtons = document.querySelectorAll('.action-btn');
-actionButtons.forEach((button) => {
-  button.addEventListener('click', () => {
-    const action = button.dataset.action;
-
-    if (action === 'run') {
-      touchActions.add('run');
-      setTimeout(() => touchActions.delete('run'), 180);
-    }
-
-    if (action === 'jump') {
-      touchActions.add('jump');
-      setTimeout(() => touchActions.delete('jump'), 200);
-    }
-
-    if (action === 'interact') interact();
-    if (action === 'vehicle') {
-      const dist = player.root.position.distanceTo(policeCar.position);
-      if (dist < 3.1) interact();
-    }
-    if (action === 'police') {
-      if (!state.police) setPoliceUniform();
-      else {
-        state.patrol = !state.patrol;
-        setLog(state.patrol ? 'Police dispatch: district patrol started.' : 'Police dispatch: patrol paused.');
-      }
-    }
-  });
-});
-
-animate();
-refreshHud();
+const world = new THREE.Group(); scene.add(world);
+const hemi = new THREE.HemisphereLight(0xffe6c1, 0x383c31, 2.1); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffc477, 3.2); sun.position.set(-45, 70, 25); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048); sun.shadow.camera.left = -80; sun.shadow.camera.right = 80; sun.shadow.camera.top = 80; sun.shadow.camera.bottom = -80; scene.add(sun);
+
+const ui = { cash: document.querySelector('#cashValue'), rank: document.querySelector('#rankValue'), wanted: document.querySelector('#wantedValue'), log: document.querySelector('#messageLog') };
+const state = { money: 1200, police: false, patrol: false, inCar: false, inside: false, mission: 0, detained: false, wanted: 0, cooldown: 0 };
+const keys = Object.create(null), held = new Set(), colliders = [];
+let camYaw = 0, camPitch = 0.15, drag = null;
+const player = { root: new THREE.Group(), velocity: new THREE.Vector3(), grounded: true, moving: false, phase: 0 };
+const M = (color, roughness = 0.8, opts = {}) => new THREE.MeshStandardMaterial({ color, roughness, ...opts });
+function mesh(parent, geometry, material, pos, cast = true) { const o = new THREE.Mesh(geometry, material); o.position.set(...pos); o.castShadow = cast; o.receiveShadow = true; parent.add(o); return o; }
+function box(parent, size, material, pos, cast = true) { return mesh(parent, new THREE.BoxGeometry(...size), material, pos, cast); }
+function message(text) { if (ui.log) ui.log.textContent = text; }
+function hud() { if (ui.cash) ui.cash.textContent = `${state.money} ₾`; if (ui.rank) ui.rank.textContent = state.police ? 'პატრულ-ინსპექტორი' : 'მოქალაქე'; if (ui.wanted) ui.wanted.textContent = String(state.wanted); }
+
+function labelTexture(text, color = '#163d67') { const c = document.createElement('canvas'); c.width = 512; c.height = 128; const x = c.getContext('2d'); x.fillStyle = color; x.fillRect(0,0,512,128); x.strokeStyle = '#e9d596'; x.lineWidth = 6; x.strokeRect(5,5,502,118); x.fillStyle = 'white'; x.font = 'bold 42px Arial'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(text,256,64); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
+function sign(text,x,y,z,w=4,color='#183e66') { const s=mesh(world,new THREE.PlaneGeometry(w,1),new THREE.MeshBasicMaterial({map:labelTexture(text,color), side:THREE.DoubleSide}),[x,y,z],false); s.rotation.y=Math.PI; return s; }
+
+// Sunset street, dashed lane markings, sidewalks, and cross street.
+mesh(world,new THREE.PlaneGeometry(260,260),M(0x756449),[0,-0.12,0],false).rotation.x=-Math.PI/2;
+box(world,[180,.12,18],M(0x292a2b),[0,0,0],false); box(world,[18,.12,180],M(0x292a2b),[0,0,0],false);
+const stripe=M(0xe5cc8d,.7); for(let i=-9;i<=9;i++){box(world,[3,.025,.13],stripe,[i*8,.08,0],false);box(world,[.13,.025,3],stripe,[0,.08,i*8],false);}
+for(const z of [-10,10])box(world,[180,.15,2.4],M(0xb09d7a),[0,.05,z],false);
+for(const x of [-10,10])box(world,[2.4,.15,180],M(0xb09d7a),[x,.05,0],false);
+
+function window(parent,x,y,z,w=1.2,h=1.3){box(parent,[w+.16,h+.16,.12],M(0x413b35),[x,y,z],false);box(parent,[w,h,.08],M(0x8db6bc,.25,{metalness:.2,emissive:0x101a1b}),[x,y,z+.08],false);box(parent,[.045,h,.1],M(0xd0b997),[x,y,z+.13],false);box(parent,[w,.045,.1],M(0xd0b997),[x,y,z+.13],false);}
+function apartment(x,z,floors,color){const g=new THREE.Group();g.position.set(x,0,z);world.add(g);const w=13,d=10,h=floors*3.1;box(g,[w,h,d],M(color),[0,h/2,0]);box(g,[w+.4,.35,d+.4],M(0x4c453c),[0,h+.16,0]);for(let f=0;f<floors;f++)for(let c=-1;c<=1;c++){const xx=c*3.6,yy=1.9+f*3.1;window(g,xx,yy,d/2+.03,1.35,1.4);box(g,[2.2,.12,1],M(0x74624c),[xx,yy-.85,d/2+.48],false);for(let r=-2;r<=2;r++)box(g,[.045,.65,.045],M(0x353330,.4,{metalness:.5}),[xx+r*.38,yy-.48,d/2+.9],false);box(g,[2,.05,.05],M(0x353330),[xx,yy-.12,d/2+.9],false);}box(g,[1.3,2.2,.18],M(0x443020),[0,1.1,d/2+.08]);colliders.push({x,z,w,d});}
+apartment(-23,-21,4,0xc0ad94);apartment(24,-22,5,0xc6b49b);apartment(-24,20,3,0xb7b9b1);apartment(24,20,4,0xbca88e);
+
+function tree(x,z,palm=true){const g=new THREE.Group();world.add(g);const trunk=mesh(g,new THREE.CylinderGeometry(.22,.38,4,12),M(0x76513a),[0,2,0]);if(palm){for(let i=0;i<8;i++){const leaf=mesh(g,new THREE.ConeGeometry(.28,3.8,6),M(0x287446),[0,4,0]);leaf.rotation.z=Math.PI/2;leaf.rotation.y=i*Math.PI/4;}}else{mesh(g,new THREE.SphereGeometry(1.7,14,12),M(0x456b3d),[0,4.2,0]).scale.y=1.3;}g.position.set(x,0,z);}
+for(let i=-4;i<=4;i++){tree(i*8,23,i%2===0);tree(i*8,-23,i%2!==0);}
+for(const [x,z] of [[-13,12],[13,12],[-13,-12],[13,-12],[-38,0],[38,0]]){const p=mesh(world,new THREE.CylinderGeometry(.09,.13,5.4,10),M(0x444746,.4,{metalness:.55}),[x,2.7,z]);box(world,[1.2,.08,.08],M(0x444746),[x+.45,5.2,z]);const lamp=new THREE.PointLight(0xffd99a,.65,12);lamp.position.set(x+.8,5,z);world.add(lamp);}
+
+// Station is visibly open-fronted so the walkable interior is always in the same world.
+const station=new THREE.Group();world.add(station);const wall=M(0xc9c5b8), floor=M(0x77766e), wood=M(0x76513a);
+box(station,[16,.25,18],floor,[0,.12,30],false);box(station,[16,5,.4],wall,[0,2.6,21],false);box(station,[16,5,.4],wall,[0,2.6,39],false);box(station,[.4,5,18],wall,[-8,2.6,30],false);box(station,[.4,5,18],wall,[8,2.6,30],false);box(station,[16,.25,18],M(0xa89e8d),[0,5.15,30],false);
+sign('POLICIA • პოლიცია',0,4.15,20.72,6,'#123b63');
+box(station,[5,1,1.4],wood,[-3.4,.75,27]);box(station,[5.2,.12,1.5],M(0x382a20),[-3.4,1.32,27]);box(station,[2,.9,.08],M(0x272d31),[3,.8,24.5]);
+// Interview room divider and barred holding cell.
+box(station,[.16,3.1,5],wall,[1.1,1.6,35.8],false);box(station,[.16,3.1,5],wall,[5.4,1.6,35.8],false);box(station,[4.4,.15,.16],wall,[3.25,3.1,33.3],false);for(let i=0;i<8;i++)box(station,[.07,2.7,.07],M(0x30363a,.4,{metalness:.6}),[1.6+i*.48,1.45,33.25],false);
+box(station,[2.4,.65,1.3],M(0x6a8292),[-4.7,.48,35]);box(station,[2.5,.65,1.2],M(0x9a9b91),[3.2,.48,36.8]);const stationLight=new THREE.PointLight(0xffdfa9,1.1,18);stationLight.position.set(0,4.2,30);station.add(stationLight);
+
+function shop(x,z,text,col){const g=new THREE.Group();g.position.set(x,0,z);world.add(g);box(g,[12,4,8],M(col),[0,2,0]);box(g,[12.2,.3,8.2],M(0x51483c),[0,4.15,0]);for(const xx of [-4,0,4])window(g,xx,2.3,4.05,2.4,1.5);box(g,[1.2,2,.2],M(0x4e382a),[0,1,4.1]);sign(text,x,3.65,z+4.18,5,'#824322');colliders.push({x,z,w:12,d:8});}
+shop(24,0,'მარკეტი',0xd3c2a7);shop(-24,0,'თბილისი • კაფე',0xb7a58d);
+
+function character(police=false,skin=0xd6a27d,clothes=0xd6d0c4){const g=new THREE.Group(), torso=mesh(g,new THREE.CapsuleGeometry(.37,.84,8,16),M(clothes),[0,1.45,0]);const head=mesh(g,new THREE.SphereGeometry(.31,24,20),M(skin),[0,2.4,0]);head.scale.set(.9,1.1,.92);mesh(g,new THREE.SphereGeometry(.33,18,14),M(0x241a15),[0,2.6,-.035]).scale.set(1,.55,.95);for(const ex of [-.1,.1])mesh(g,new THREE.SphereGeometry(.027,8,8),M(0x211c18),[ex,2.45,.275],false);const arms=[],legs=[];for(const side of [-1,1]){const a=mesh(g,new THREE.CapsuleGeometry(.105,.62,5,12),M(police?0x173e6b:skin),[side*.46,1.48,0]);a.rotation.z=-side*.1;arms.push(a);const l=mesh(g,new THREE.CapsuleGeometry(.13,.68,5,12),M(police?0x202c3b:0x303841),[side*.16,.58,0]);legs.push(l);}if(police){mesh(g,new THREE.CylinderGeometry(.1,.1,.03,16),M(0xe1c45d,.4,{metalness:.5}),[.13,1.73,.34],false);mesh(g,new THREE.BoxGeometry(.78,.68,.43),new THREE.MeshStandardMaterial({color:0x17416a,transparent:true,opacity:.45}),[0,1.48,0],false);mesh(g,new THREE.CylinderGeometry(.31,.34,.16,18),M(0x102e4c),[0,2.79,0]);mesh(g,new THREE.BoxGeometry(.45,.04,.22),M(0x102e4c),[0,2.76,.15]);}g.userData={arms,legs,phase:Math.random()*6};return g;}
+const officer=character(true);officer.position.set(-3,0,25);world.add(officer);player.root=character();player.root.position.set(0,0,10);world.add(player.root);
+const suspect=character(false,0xc58a68,0x765149);suspect.position.set(32,0,-12);world.add(suspect);
+const civilians=[];for(let i=0;i<10;i++){const n=character(false,[0xd4a17c,0xe0b68f,0xb98062][i%3],[0x536d78,0x875b49,0x68734d,0xb2a58d][i%4]);n.position.set((i%5)*7-15,0,Math.floor(i/5)*9-5);n.userData.home=n.position.clone();n.userData.target=n.position.clone();n.userData.wait=Math.random()*3;world.add(n);civilians.push(n);}
+
+function createPatrolCar(){const g=new THREE.Group(), white=M(0xe6e7e2,.34,{metalness:.2}), blue=M(0x174575,.38,{metalness:.2});box(g,[4.1,.82,2],white,[0,.92,0]);box(g,[2.1,.76,1.7],M(0x9bb8c2,.24,{metalness:.25}),[-.1,1.68,0]);for(const side of [-1,1])box(g,[1.55,.46,.03],blue,[.15,1.08,side*1.015]);const bar=new THREE.Group();box(bar,[1.2,.12,.32],M(0x22252a),[0,0,0]);const red=mesh(bar,new THREE.BoxGeometry(.38,.16,.3),new THREE.MeshBasicMaterial({color:0xff3434}),[.34,.08,0]);const blueLamp=mesh(bar,new THREE.BoxGeometry(.38,.16,.3),new THREE.MeshBasicMaterial({color:0x329dff}),[-.34,.08,0]);bar.position.set(-.1,2.12,0);g.add(bar);g.userData.bar=bar;g.userData.lamps=[red,blueLamp];g.userData.wheels=[];for(const x of [-1.35,1.35])for(const z of [-1,1]){const w=mesh(g,new THREE.CylinderGeometry(.42,.42,.28,20),M(0x17191b),[x,.44,z]);w.rotation.x=Math.PI/2;g.userData.wheels.push(w);}g.position.set(-12,0,2);world.add(g);return g;}
+const car=createPatrolCar();
+const marker=new THREE.Group();const ring=mesh(marker,new THREE.TorusGeometry(1.2,.1,10,36),new THREE.MeshBasicMaterial({color:0xffd44f}),[0,.2,0],false);ring.rotation.x=Math.PI/2;mesh(marker,new THREE.CylinderGeometry(.08,.35,3,12,1,true),new THREE.MeshBasicMaterial({color:0xffd44f,transparent:true,opacity:.15,side:THREE.DoubleSide}),[0,1.7,0],false);marker.position.set(32,0,-12);world.add(marker);
+
+function near(a,b,d){return a.distanceTo(b)<d;}
+function joinPolice(){if(state.police){state.patrol=!state.patrol;message(state.patrol?'რადიო: გამოძახება — აღმოსავლეთ უბანში საეჭვო პირი.':'პატრული შეჩერებულია.');}else{state.police=true;state.money+=300;message('პატრულის სამსახური დაიწყო. ფორმა და ეკიპაჟი მზადაა.');}hud();}
+function interact(){if(state.cooldown>0)return;state.cooldown=.25;if(state.inCar){state.inCar=false;player.root.visible=true;player.root.position.set(car.position.x+2.7,0,car.position.z);message('მანქანიდან გადმოხვედი.');return;}if(state.inside){state.inside=false;player.root.position.set(0,0,19);message('განყოფილებიდან გამოხვედი.');return;}
+ if(!state.police&&near(player.root.position,officer.position,3)){joinPolice();return;}
+ if(state.police&&near(player.root.position,car.position,4.5)){state.inCar=true;player.root.visible=false;message('ეკიპაჟში ჩაჯექი. WASD მართვა · E გადმოსვლა.');return;}
+ if(state.police&&state.patrol&&!state.detained&&near(player.root.position,suspect.position,3.5)){state.detained=true;state.mission=2;suspect.position.set(34,0,-12);marker.position.set(0,0,25);message('ეჭვმიტანილი დაკავებულია. დააბრუნე განყოფილებაში.');return;}
+ if(state.police&&state.detained&&near(player.root.position,new THREE.Vector3(0,0,25),7)){state.detained=false;state.patrol=false;state.money+=650;state.mission=0;suspect.position.set(32,0,-12);marker.position.set(32,0,-12);message('დავალება შესრულებულია · ჯილდო +650 ₾.');hud();return;}
+ if(near(player.root.position,new THREE.Vector3(0,0,19),3)){state.inside=true;player.root.position.set(0,0,22.5);message('პოლიციის განყოფილებაში ხარ. E — გასვლა.');return;}
+ message('მიუახლოვდი პოლიციელს, მანქანას ან განყოფილების შესასვლელს.');}
+function animateRig(g,dt,walking){const d=g.userData;if(!d.legs)return;d.phase+=dt*(walking?10:1.6);const s=walking?Math.sin(d.phase)*.48:Math.sin(d.phase)*.018;d.legs[0].rotation.x=s;d.legs[1].rotation.x=-s;d.arms[0].rotation.x=-s*.55;d.arms[1].rotation.x=s*.55;}
+function collision(x,z){if(state.inside)return{x,z};for(const c of colliders){if(Math.abs(x-c.x)<c.w/2+.5&&Math.abs(z-c.z)<c.d/2+.5){const dx=Math.abs(x-c.x)-c.w/2,dz=Math.abs(z-c.z)-c.d/2;if(dx>dz)x=c.x+Math.sign(x-c.x)*(c.w/2+.52);else z=c.z+Math.sign(z-c.z)*(c.d/2+.52);}}return{x,z};}
+function updateNpcs(dt){for(const n of civilians){n.userData.wait-=dt;if(n.userData.wait<=0){const a=Math.random()*Math.PI*2,d=2+Math.random()*7;n.userData.target.set(n.userData.home.x+Math.cos(a)*d,0,n.userData.home.z+Math.sin(a)*d);n.userData.wait=4+Math.random()*4;}const v=n.userData.target.clone().sub(n.position);if(v.length()>.3){v.normalize();n.position.addScaledVector(v,dt*.8);n.rotation.y=Math.atan2(v.x,v.z);animateRig(n,dt,true);}else animateRig(n,dt,false);}animateRig(officer,dt,false);animateRig(suspect,dt,false);}
+function update(dt){state.cooldown=Math.max(0,state.cooldown-dt);const mx=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0),mz=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0);if(state.inCar){car.rotation.y+=mx*1.5*dt;const speed=mz*13;car.position.x+=Math.sin(car.rotation.y)*speed*dt;car.position.z+=Math.cos(car.rotation.y)*speed*dt;for(const w of car.userData.wheels)w.rotation.z+=mz*dt*8;}else{const move=new THREE.Vector3(mx,0,mz);player.moving=move.lengthSq()>0;if(player.moving){move.normalize();const speed=(keys.ShiftLeft||keys.ShiftRight||held.has('run'))?8:5;const dx=move.x*Math.cos(camYaw)+move.z*Math.sin(camYaw),dz=-move.x*Math.sin(camYaw)+move.z*Math.cos(camYaw);player.velocity.x=dx*speed;player.velocity.z=dz*speed;player.root.rotation.y=Math.atan2(dx,dz);}else{player.velocity.x*=Math.pow(.001,dt);player.velocity.z*=Math.pow(.001,dt);}let p=collision(player.root.position.x+player.velocity.x*dt,player.root.position.z+player.velocity.z*dt);player.root.position.x=THREE.MathUtils.clamp(p.x,-75,75);player.root.position.z=THREE.MathUtils.clamp(p.z,-75,75);if((keys.Space||held.has('jump'))&&player.grounded){player.velocity.y=6.2;player.grounded=false;}player.velocity.y-=17*dt;player.root.position.y+=player.velocity.y*dt;if(player.root.position.y<=0){player.root.position.y=0;player.velocity.y=0;player.grounded=true;}animateRig(player.root,dt,player.moving);}
+ updateNpcs(dt);car.userData.bar.visible=state.patrol;const pulse=Math.sin(clock.elapsedTime*10)*.5+.5;car.userData.lamps[0].material.color.setHex(pulse>.5?0xff3434:0x661111);car.userData.lamps[1].material.color.setHex(pulse>.5?0x111166:0x329dff);marker.visible=state.police&&state.patrol;marker.position.y=Math.sin(clock.elapsedTime*2)*.12;
+ const target=state.inCar?car.position:player.root.position,dist=state.inside?9:10;const offset=new THREE.Vector3(Math.sin(camYaw)*dist,4.3+camPitch*5,Math.cos(camYaw)*dist);camera.position.lerp(target.clone().add(offset),1-Math.exp(-5*dt));camera.lookAt(target.x,target.y+1.4,target.z);}
+function frame(){requestAnimationFrame(frame);update(Math.min(clock.getDelta(),.04));renderer.render(scene,camera);} 
+
+window.addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='KeyE'&&!e.repeat)interact();if(e.code==='KeyP'&&!e.repeat&&state.police)joinPolice();});window.addEventListener('keyup',e=>keys[e.code]=false);window.addEventListener('blur',()=>Object.keys(keys).forEach(k=>keys[k]=false));
+canvas.addEventListener('pointerdown',e=>{if(e.pointerType==='touch'||e.button===2){drag={x:e.clientX,y:e.clientY,id:e.pointerId};canvas.setPointerCapture(e.pointerId);}});canvas.addEventListener('pointermove',e=>{if(!drag||drag.id!==e.pointerId)return;camYaw-=(e.clientX-drag.x)*.006;camPitch=THREE.MathUtils.clamp(camPitch-(e.clientY-drag.y)*.003,-.1,.75);drag.x=e.clientX;drag.y=e.clientY;});canvas.addEventListener('pointerup',()=>drag=null);canvas.addEventListener('contextmenu',e=>e.preventDefault());
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.5));});
+for(const b of document.querySelectorAll('.control-btn')){const k=b.dataset.key;const down=e=>{e.preventDefault();keys[k]=true;b.setPointerCapture?.(e.pointerId);};const up=()=>keys[k]=false;b.addEventListener('pointerdown',down);b.addEventListener('pointerup',up);b.addEventListener('pointercancel',up);b.addEventListener('lostpointercapture',up);}
+for(const b of document.querySelectorAll('.action-btn'))b.addEventListener('click',()=>{const a=b.dataset.action;if(a==='interact')interact();if(a==='run'){held.add('run');setTimeout(()=>held.delete('run'),500);}if(a==='jump'){held.add('jump');setTimeout(()=>held.delete('jump'),180);}if(a==='vehicle'){if(state.inCar||near(player.root.position,car.position,4.5))interact();else message('მიუახლოვდი საპატრულო მანქანას.');}if(a==='police'){if(!state.police){player.root.position.set(-3,0,25);joinPolice();}else joinPolice();}});
+message('თბილისი · მიუახლოვდი პოლიციელს და დააჭირე E-ს სამსახურის დასაწყებად.');hud();frame();
