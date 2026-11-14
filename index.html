@@ -1,62 +1,46 @@
 <!doctype html>
-<html lang="en">
+<html lang="ka">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>CRIME CITY GEORGIA</title>
-    <meta name="description" content="Playable 3D open-world crime city prototype with Georgian police systems" />
-    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="theme-color" content="#192531" />
+    <title>CRIME CITY GEORGIA — თბილისი</title>
+    <meta name="description" content="თბილისის 3D ღია სამყაროს საპატრულო თამაში" />
+    <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
-    <div id="app">
-      <canvas id="gameCanvas"></canvas>
-
-      <div id="hud">
-        <div class="top-bar">
-          <div class="brand">CRIME CITY GEORGIA</div>
-          <div class="status">City: Tbilisi District</div>
-        </div>
-
+    <main id="app">
+      <canvas id="gameCanvas" aria-label="CRIME CITY GEORGIA — სამგანზომილებიანი თამაში"></canvas>
+      <section id="hud" aria-label="თამაშის ინტერფეისი">
+        <header class="top-bar">
+          <div class="brand"><span class="brand-mark">CC</span><span>CRIME CITY <b>GEORGIA</b></span></div>
+          <div class="status"><span class="live-dot"></span> თბილისი · საპატრულო უბანი</div>
+        </header>
         <div class="stats-row">
-          <div class="stat-box">
-            <span class="label">Cash</span>
-            <span id="cashValue">$0</span>
-          </div>
-          <div class="stat-box">
-            <span class="label">Rank</span>
-            <span id="rankValue">Civilian</span>
-          </div>
-          <div class="stat-box">
-            <span class="label">Wanted</span>
-            <span id="wantedValue">0</span>
-          </div>
+          <div class="stat-box"><span class="label">ბალანსი</span><strong id="cashValue">1 200 ₾</strong></div>
+          <div class="stat-box"><span class="label">სტატუსი</span><strong id="rankValue">მოქალაქე</strong></div>
+          <div class="stat-box wanted-box"><span class="label">ძებნის დონე</span><strong id="wantedValue">0</strong></div>
         </div>
-
-        <div id="messageLog" class="message-log">
-          Welcome to Tbilisi. Patrol the city and protect the streets.
+        <div class="mission-card"><span class="mission-kicker">მიმდინარე დავალება</span><strong id="missionValue">მიუახლოვდი პოლიციელს სამსახურის დასაწყებად</strong></div>
+        <div id="messageLog" class="message-log">თბილისი · მიუახლოვდი პოლიციელს და დააჭირე E-ს სამსახურის დასაწყებად.</div>
+        <div class="map-card" aria-label="თბილისის უბნის რუკა"><div class="map-grid"></div><span class="map-road road-a"></span><span class="map-road road-b"></span><span class="map-player">▲</span><span class="map-label">თბილისი</span></div>
+      </section>
+      <section id="controls" aria-label="თამაშის მართვა">
+        <div class="dpad" aria-label="მოძრაობა">
+          <button class="control-btn" data-key="KeyW" aria-label="წინ">▲</button>
+          <div class="dpad-middle"><button class="control-btn" data-key="KeyA" aria-label="მარცხნივ">◀</button><button class="control-btn" data-key="KeyS" aria-label="უკან">▼</button><button class="control-btn" data-key="KeyD" aria-label="მარჯვნივ">▶</button></div>
         </div>
-      </div>
-
-      <div id="controls" aria-label="mobile controls">
-        <div class="dpad">
-          <button class="control-btn" data-key="KeyW">↑</button>
-          <div class="dpad-middle">
-            <button class="control-btn" data-key="KeyA">←</button>
-            <button class="control-btn" data-key="KeyS">↓</button>
-            <button class="control-btn" data-key="KeyD">→</button>
-          </div>
-        </div>
-
         <div class="action-buttons">
-          <button class="action-btn" data-action="run">Run</button>
-          <button class="action-btn" data-action="jump">Jump</button>
-          <button class="action-btn" data-action="interact">E / Enter</button>
-          <button class="action-btn" data-action="vehicle">Car</button>
-          <button class="action-btn" data-action="police">Police</button>
+          <button class="action-btn" data-action="run">სირბილი</button>
+          <button class="action-btn" data-action="jump">ხტომა</button>
+          <button class="action-btn interact-btn" data-action="interact">E · მოქმედება</button>
+          <button class="action-btn" data-action="vehicle">მანქანა</button>
+          <button class="action-btn police-btn" data-action="police">პატრული</button>
         </div>
-      </div>
-    </div>
-
-    <script type="module" src="/src/main.js"></script>
+        <div class="desktop-help">WASD / ისრები — მოძრაობა · Shift — სირბილი · Space — ხტომა · E — მოქმედება · P — პატრული · მაუსით/თითით — კამერა</div>
+      </section>
+    </main>
+    <script type="module" src="./src/main.js"></script>
+    <script src="./src/georgian.js" defer></script>
   </body>
 </html>
