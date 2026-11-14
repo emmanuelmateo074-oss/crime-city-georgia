@@ -33,18 +33,17 @@ const state = {
   insideStation: false,
   patrol: false,
   mission: 'District patrol',
-  jobMessage: 'Welcome to Tbilisi. Patrol the city and protect the streets.'
+  jobMessage: 'Welcome to Tbilisi. Patrol the city and protect the streets.',
+  sirenPulse: 0
 };
 
 const input = {};
 const touchActions = new Set();
-
 const world = new THREE.Group();
 scene.add(world);
 
 const player = {
   root: new THREE.Group(),
-  body: null,
   velocity: new THREE.Vector3(),
   speed: 5,
   runSpeed: 8,
@@ -446,6 +445,8 @@ function createPoliceVehicle(x, z) {
   }
 
   car.position.set(x, 0.3, z);
+  car.userData.sirenBlue = sirenBlue;
+  car.userData.sirenRed = sirenRed;
   world.add(car);
   return car;
 }
@@ -484,6 +485,47 @@ function addWorldProps() {
 
   for (const light of [[-15, 11], [15, 11], [-15, -11], [15, -11], [-3, 14], [3, 14]]) {
     createStreetLight(light[0], light[1]);
+  }
+}
+
+const cityNpc = {
+  suspect: {
+    mesh: suspicious,
+    home: new THREE.Vector3(9, 0, 8),
+    target: new THREE.Vector3(9, 0, 8),
+    speed: 1.4
+  },
+  civilian: {
+    mesh: civilian,
+    home: new THREE.Vector3(-10, 0, 3),
+    target: new THREE.Vector3(-10, 0, 3),
+    speed: 1.1
+  }
+};
+
+function randomNpcTarget(home, range = 8) {
+  const angle = Math.random() * Math.PI * 2;
+  const radius = Math.random() * range;
+  return new THREE.Vector3(
+    THREE.MathUtils.clamp(home.x + Math.cos(angle) * radius, -26, 26),
+    0,
+    THREE.MathUtils.clamp(home.z + Math.sin(angle) * radius, -26, 26)
+  );
+}
+
+function updateNpcs() {
+  for (const npc of Object.values(cityNpc)) {
+    const mesh = npc.mesh;
+    const toTarget = npc.target.clone().sub(mesh.position);
+    const dist = toTarget.length();
+
+    if (dist > 0.2) {
+      toTarget.normalize();
+      mesh.position.addScaledVector(toTarget, npc.speed * 0.016);
+      mesh.rotation.y = Math.atan2(toTarget.x, toTarget.z);
+    } else {
+      npc.target = randomNpcTarget(npc.home, 8);
+    }
   }
 }
 
@@ -631,8 +673,16 @@ function updateMovement(delta) {
 
 function animate() {
   const delta = Math.min(clock.getDelta(), 0.033);
+  state.sirenPulse += delta * 10;
 
   updateMovement(delta);
+  updateNpcs();
+
+  if (state.vehicle && state.vehicle.userData.sirenBlue && state.vehicle.userData.sirenRed) {
+    const pulse = Math.sin(state.sirenPulse) * 0.5 + 0.5;
+    state.vehicle.userData.sirenBlue.intensity = 1.2 + pulse * 1.4;
+    state.vehicle.userData.sirenRed.intensity = 1.2 + (1 - pulse) * 1.4;
+  }
 
   if (!state.inVehicle) {
     const followPos = new THREE.Vector3(player.root.position.x, 3.2, player.root.position.z + 8.5);
